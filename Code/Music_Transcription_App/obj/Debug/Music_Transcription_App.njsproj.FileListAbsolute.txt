@@ -1,0 +1,3 @@
+C:\Users\alonh\workspace\Stellar Intelligence\Music Transcription\Code\Music_Transcription_App\obj\Debug\Music_Transcription_App.njsproj.AssemblyReference.cache
+C:\Users\alonh\workspace\Stellar Intelligence\Music Transcription\Code\Music_Transcription_App\obj\Debug\Music_Transcription_App.njsproj.CoreCompileInputs.cache
+C:\Users\alonh\workspace\Stellar Intelligence\Music Transcription\Code\Music_Transcription_App\bin\Microsoft.NodejsTools.WebRole.dll

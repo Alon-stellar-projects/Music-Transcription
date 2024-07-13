@@ -1,0 +1,15 @@
+body {
+}
+
+#drop-area {
+    background-color: gold;
+    border: 2px dashed #aaa;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+#drop-text {
+    font-size: 18px;
+}

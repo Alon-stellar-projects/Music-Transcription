@@ -1,0 +1,14 @@
+// A navigation ruler for pages in the website
+
+nav
+  div.site-title
+    a(href="/")
+      h1 Beethoven
+    h3= title
+
+  ul
+    - const links = [{ref: '/', text: 'home'}, {ref: '/about', text: 'about'}, {ref: '/notesheets', text: 'note-sheets'}]
+    each link in links
+      if link.text.toLowerCase() !== title.toLowerCase()
+        li
+          a(href=link.ref) #{link.text}

@@ -1,0 +1,52 @@
+extends layout
+
+block content
+  link(rel='stylesheet', href='/stylesheets/index.css')
+
+  div#subtitle
+    h3 Play any song or music with your instruments thanks to Beethoven
+  
+  div#converter
+    p Convert an audio file into note-sheet:
+    //
+        // Load/drop audio file:
+        div#drop-area
+          div#drop-text Load or drop a file here
+          //label(for="files" class="btn" text="Load or drop a file here")
+          input#file-input(type="file")
+          //button.load-file-btn Load
+
+        // Submit to server:
+        button#upload-button(disabled=true) Submit
+
+    // File drop area
+    div#drop-area
+      form#upload-form(method="POST" enctype="multipart/form-data")
+        label(for="File") File:
+        //input#file-input(type="file" name="audio_input" multiple accept="audio")
+        input#file-input(type="file" name="audio_input" multiple accept=".txt")
+        button#upload-button(disabled=true type="submit") Convert
+        //button#cancel-button(disabled=true type="button") Cancel
+      
+      p
+        strong= "Uploading Status:"
+        span#status-message= ''
+
+    // Preview window
+    div#preview-image
+      img#notes-img(src="#" alt="Preview Notes" style="display:none")
+
+    // Clear and Download buttons:
+    div#buttons-container
+      button#clear-button(disabled=true type="button") Clear
+      button#download-button(disabled=true type="button" data-fileId="" ) Download PDF
+
+    script.
+        // How many files can be apploaded at once
+        const uploadLimit = #{uploadLimit};
+    // The main JS pf the page:
+    script(src="javascripts/index.js")
+
+  // Remove it:
+  h1= title
+  p Welcome to #{title}
