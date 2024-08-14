@@ -1,21 +1,33 @@
+/**
+ * The main server application driver of the Music_Transcription_App. This app allows a user 
+ * to upload music audio files, convert them into musical notes sheets ("transcription") and 
+ * let the user download it as a PDF. The app also presents a preview image of the resulted 
+ * notes.
+ * The application runs on node.js and python technologies, and utilizes advanced Machine Learning 
+ * models for the transcription process.
+ * 
+ * Author: Alon Haviv, Stellar Intelligence.
+ */
+
 'use strict';
 var debug = require('debug')('my express app');
 var express = require('express');
 var path = require('path');
 const fs = require('fs');
 var favicon = require('serve-favicon');  // For icons
-var logger = require('morgan');
+var morgan = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 
-var routes = require('./routes/routs');
-var users = require('./routes/users');
+var routes = require(path.join(__dirname, 'routes', 'routs'));
+var users = require(path.join(__dirname, 'routes', 'users'));
+const myLoggers = require(path.join(solutionBasePath, 'Music_Transcription_App', 'utils', 'loggers.js'));
+const ENVS = myLoggers.ENVS;  // Object containing the allowed environments (dev, production, ...).
 
 var app = express();
-
-// Maybe I already have them by importing routes:
 const solutionBasePath = path.join(__dirname, '..');
 const consts = JSON.parse(fs.readFileSync(path.join(solutionBasePath, 'Consts.json'), { encoding: 'utf8', flag: 'r' }));
+const logFilePath = path.join(solutionBasePath, consts["log_file"]);
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));  // Setup a "views" lookup folder.
@@ -23,8 +35,12 @@ app.set('view engine', 'pug');  // Setup a view engine with ".pug" files.
 
 // uncomment after placing your favicon in /public
 //app.use(favicon(__dirname + '/public/favicon.ico'));
-// A logger:
-app.use(logger('dev'));
+// A logger for requests and responses:
+if (app.get("env") === "production")
+    app.use(morgan('combined', { stream: fs.createWriteStream(logFilePath, { flags: 'a' }) }));
+else  // developement
+    app.use(morgan('dev')); //log to console on development
+
 // Parses data from incoming URL requests into an object, with field names matching those in the request's body:
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -36,7 +52,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/', routes);
 app.use('/users', users);
 
-// catch 404 and forward to error handler
+// Catch 404 and forward to error handler
 app.use(function (req, res, next) {
     var err = new Error('Not Found');
     err.status = 404;
@@ -45,8 +61,8 @@ app.use(function (req, res, next) {
 
 // Error handlers:
 
-// development error handler
-// will print stacktrace
+// Development error handler. Render the error page with all the error's data.
+// Will print stacktrace.
 if (app.get('env') === 'development') {
     app.use(function (err, req, res, next) {
         res.status(err.status || 500);
@@ -58,8 +74,8 @@ if (app.get('env') === 'development') {
     });
 }
 
-// production error handler
-// no stacktraces leaked to user
+// Production error handler. Render the error page with just the error message.
+// No stacktraces leaked to user.
 app.use(function (err, req, res, next) {
     res.status(err.status || 500);
     res.render('error', {
@@ -75,5 +91,6 @@ app.set('host', consts.app_host);
 
 // Launch app:
 var server = app.listen(app.get('port'), app.get('host'), function () {
-    debug('Express server listening on port ' + server.address().port);
+    debug('Music Transcription server listening on port ' + server.address().port);
+    myLoggers.log(ENVS.ALL, 'Music Transcription server listening on port ' + server.address().port);
 });

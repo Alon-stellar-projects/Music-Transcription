@@ -1,3 +1,9 @@
+/**
+ * Author: Alon Haviv, Stellar Intelligence.
+ * 
+ * Control functions for the incoming requests, connected by the router module.
+ */
+
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -6,9 +12,12 @@ const { spawn } = require('child_process');
 const net = require('net');
 
 const solutionBasePath = path.join(__dirname, '..', '..');
+const { SpawnProcessError } = require(path.join(solutionBasePath, 'Music_Transcription_App', 'utils', 'error_objects.js'));
+const myLoggers = require(path.join(solutionBasePath, 'Music_Transcription_App', 'utils', 'loggers.js'));
+const ENVS = myLoggers.ENVS;  // Object containing the allowed environments (dev, production, ...).
+
 const consts = JSON.parse(fs.readFileSync(path.join(solutionBasePath, 'Consts.json'), { encoding: 'utf8', flag: 'r' }));
 const uploadAudioDir = path.join(solutionBasePath, 'uploads', 'audio');
-const pythonConverterPath = path.join(solutionBasePath, 'Machine_Learning_Python', 'converter.py');
 const pythonPDFConverterPath = path.join(solutionBasePath, consts['pythonNoteConverterPath']);
 const pythonImageGeneratorPath = path.join(solutionBasePath, consts['pythonImageGeneratorPath']);
 // Set up multer for file upload handling
@@ -31,139 +40,210 @@ const upload = multer();
     }
 });*/
 
-//const saveEveryFile = true;
-//const saveAudioFile = true;
+// The generic name of a data json file of each uploaded audio directory:
 const jDataFileName = consts["json_data_file_name"];
+// Count the total number of audio files uploaded since the last reset of 
+// the system(useful to generate a unique ID for each file.)
 var fileCounter = 0;
 
-
+// Multer upload middleware is set to upload any audio input file:
 const upload_middleware = upload.any('audio_input');
 
+/**
+ * Render the home (index) page.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
 const get_home_page = (req, res) => {
-    res.render('index', { title: 'Home', uploadLimit: consts["max_files_transfer"] });
+    res.render('index', {
+        title: 'Home', uploadLimit: consts["max_files_transfer"],
+        allowedTypes: consts["valid_audio_extensions"], sizeLimitKB: consts['max_size_KB'],
+        statusCodes: consts["status_codes"]
+    });
 }
 
+/**
+ * Render the about page.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
 const get_about_page = (req, res) => {
     res.render('about', { title: 'About' });
 }
 
+/**
+ * Send an image data file whose ID is specified in the URL as req.params.id.
+ * The image is a preview of the first page of the notes sheet.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
 const get_image_by_id = (req, res) => {
     const id = req.params.id;  // The id of the requested notes sheet.
-    //res.send('Sends an image with id ' + id);
     send_image_response(id, res);
 }
 
+/**
+ * Send a PDF data file whose ID is specified in the URL as req.params.id.
+ * The PDF contains the notes sheet.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
 const get_pdf_by_id = (req, res) => {
     const id = req.params.id;  // The id of the requested notes sheet.
-    //res.send('Sends a PDF with id ' + id);
     send_pdf_response(id, res);
 }
 
+/**
+ * Send a json object with meta-data regarding the audio directory whose ID 
+ * is specified in the URL as req.params.id.
+ * The data object is read from a file whose name is in jDataFileName, and 
+ * is stored in the specific audio directory matching the given ID.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
 const get_data_by_id = (req, res) => {
     const id = req.params.id;  // The id of the requested notes sheet.
     const filePath = get_specific_jData_file_path(id);
 
+    // Check if the file exists:
     if (!fs.existsSync(filePath)) {
-        console.log('\tFile not exists!');
-        return res.status(404).render('error', {
-            title: 'File Not Found!',
-            message: "The requested file ID doesn't match any existing file.",
+        return res.status(consts.status_codes.data_removed_code).render('error', {
+            title: 'ID Not Found!',
+            message: "The requested file ID doesn't exist or is no longer available.",
             error: {}
         });
     }
     send_data_response(filePath, res);
 }
 
-const post_audio_and_convert = async (req, res) => {  // What if someone presses many times the "Convert" button fosr the same uploaded file?
+/**
+ * Handle posting of audio files and their convertion to PDF notes sheet files.
+ * Get an audio file or files (in the request), generate a PDF notes sheet and 
+ * a preview image (for each one), and store all of those files in a dedicated 
+ * directory with a unique ID (for each original audio file). Send the IDs back 
+ * as a response.
+ * Even if not all the files are legal or converted successfuly, still send a 
+ * success. Only if all of them failed send a proper failure code.
+ * @param {any} req - A web request object.
+ * @param {any} res - A web response object.
+ */
+const post_audio_and_convert = async (req, res) => {
     let files = req.files;
-    var idArr = [];
-    let dirPath;
+    var idArr = [];  // The IDs for each file.
+    let errorCodesArr = [];  // Tracking the convertion errors.
 
-    if (files) {
-        if (files.length > consts['max_files_transfer'])
-            files = files.slice(0, consts['max_files_transfer']);
-        //idArr = new Array(files.length);
-        //for (let file of files)
+    // Check for empty input:
+    if (!files || files.length === 0) {
+        res.status(consts.status_codes.bad_input).send();
+        return;
+    }
+    // Check files' total size:
+    if (files.reduce((sum, { size }) => sum + size, 0) > consts.max_size_KB) {
+        res.status(consts["status_codes"]["files_too_large_code"]).send();
+        return;
+    }
+    // Check that the number of files doesn't pass the limit:
+    if (files.length > consts['max_files_transfer'])
+        files = files.slice(0, consts['max_files_transfer']);
 
-        // Spawn the python convertor here, so we don't need to use multiple ports at each time.
-        // MAke a max-num-of-files parameter in Consts.json, for the number of clients/sockets, and add checks that we don't exceed it.
+    // Spawn the python process here so we don't have to launch the program a new for every file, 
+    // and with a different port. Instead, we do it once for all the files, and handle each file via 
+    // a different client - socket connection.
+    let pythonNotesConvertor;  // The process.
+    let processIsAlive = { 'isAlive': false };  // Keep tracking on whether or not the process is still running.
+    try {
+        pythonNotesConvertor = await spawnPythonProcess(pythonPDFConverterPath, args = [], isAlive = processIsAlive);
+    } catch (err) {
+        // It might be possible for the process to report an error, but for some
+        // reason not getting teminated by itself.
+        if (processIsAlive.isAlive)  // In case it's still alive somehow.
+            pythonNotesConvertor.kill();
+        res.status(consts["status_codes"]["internal_server_error_code"]).send();
+        return;
+    }
 
-        // We want it here so we don't launch the program a new for everyfile, but
-        // once for all of them, and handle each file via a different client - socket.
-        let pythonNotesConvertor
-        try {
-            pythonNotesConvertor = await spawnPythonProcess(pythonPDFConverterPath, args = []); // Add await?
-        } catch (err) {
-            // Do something better here!
-            res.status(500).json({ ids: idArr });
-            return;
-        }
+    // Scan each file, convert and save it and all the results to disc:
+    for (var file of files) {
+        file.id = generate_new_id();
+        const dirPath = get_specific_dir_path(file.id);
+        // Log some information about the uploaded file:
+        myLoggers.log(ENVS.ALL, 'Original name:', file.originalname, ',', 'MIME type:', file.mimetype);
+        myLoggers.log(ENVS.DEVELOPMENT, 'File received:', file);
+        myLoggers.log(ENVS.DEVELOPMENT, 'data:', file.buffer.toString("utf8"));
         
-
-        //files.forEach(async (file, i) => {  // Change it to support sync run!
-        for (var i in files) {
-            var file = files[i];
-            //idArr[i] = generate_new_id();
-            file.id = generate_new_id();
-            dirPath = get_specific_dir_path(file.id);
-            // Log some information about the uploaded file
-            console.log('Original name:', file.originalname);
-            console.log('MIME type:', file.mimetype);
-            console.log('File received:', file);
-            console.log('data:', file.buffer.toString("utf8"));
-
-            // Saves the audio file and its data in a proper directory:
-            //idArr[i] = file.id;
-            try {
-                await save_file(file, dirPath);  // Failed/succeed?
-                //idArr.push(file.id);  // REMOVE!
-                
-                let convertRes = await convertAudio(file, dirPath, pythonNotesConvertor);  // Async task
- 
-                if (convertRes) {
-                    idArr.push(file.id);
-                    // If consts["save_every_file"] is False then every T minutes delete the folder. (add timeout to all the files here and once done delete the folders).
-                    if (!consts["save_every_file"])  // UNCOMMENT
-                        deleteDirectoryWithDelay(dirPath);
-                }
-            } catch (e) {
-                // remove the dir and all its files.
-                deleteDirectorySync(dirPath);  // UNCOMMENT
-                console.error(e.message);
-                // send an error respond or continue to the next file?
+        // Saves the audio file and its data in a proper directory:
+        try {
+            // Check if the process isAlive:
+            await save_file(file, dirPath);
+            if (!processIsAlive.isAlive) {
+                // The python convertor died/ended before all the files were processed => delete the directory:
+                myLoggers.errorLog(ENVS.ALL, `The python convertor died/ended before all the files were processed`);
+                deleteDirectorySync(dirPath);
+                errorCodesArr.push(consts["status_codes"]["internal_server_error_code"]);
+                break;  // End the for loop.
             }
-        }//});
-        // Kill pythonNotesConvertor if it's still running.
-        /*if (pythonNotesConvertor !== null)
-            pythonNotesConvertor.kill();*/
+
+            // Convert and store the results:
+            await convertAudio(file, dirPath);
+            idArr.push(file.id);
+            // If consts["save_every_file"] is false then every T minutes delete the folder:
+            if (!consts["save_every_file"])
+                deleteDirectoryWithDelay(dirPath);
+        }
+        catch (newErr) {
+            // Either the saving or the convertion failed. Either way, delete the directory 
+            // and all its files, and report the error.
+            deleteDirectorySync(dirPath);
+            myLoggers.errorLog(ENVS.ALL, newErr.hasOwnProperty('message') ? newErr.message : newErr.toString());
+            errorCodesArr.push(newErr.hasOwnProperty('code') ? newErr.code : consts.status_codes.internal_server_error_code);
+            continue; // Continue to the next file. 1 error shouldn't end the entire process.
+        }
+    }
+    // Kill pythonNotesConvertor if it's still running:
+    if (processIsAlive.isAlive) {
         pythonNotesConvertor.kill();
     }
-    console.log('idArr =', idArr);
-    //let fileContent = 'Received file: ' + JSON.stringify(files);
-    //console.log('In app.js: req.method =', req.method, ', files =', JSON.stringify(files), ', type =', typeof (files));
-    //res.json({ result: fileContent });
-    //res.send(`File received: ${files[0]}\nOriginal name: ${files[0].originalname}\nMIME type: ${files[0].mimetype}`);
-    //res.sendFile(files[0]);
+    const convertionSuccesRateStr = '('+ idArr.length + '/' + files.length + ').';
 
-    // What happens if there are several files? Need also to update the client side to handle several images in response.
-    res.json({ ids: idArr });
-    //send_image_response(idArr, res);
+    // All the files failed!
+    if (idArr.length === 0 && errorCodesArr.length > 0) {
+        myLoggers.errorLog(ENVS.ALL, 'All files failed to be converted', convertionSuccesRateStr);
+        res.status(getMostRelevantUploadError(errorCodesArr)).send();
+        return;
+    }
+
+    // Everything is awesome!
+    myLoggers.log(ENVS.DEVELOPMENT, 'Fnished converting the files', convertionSuccesRateStr);
+    res.status(consts["status_codes"]["upload_request_success"]).json({ ids: idArr });
 }
 
+/**
+ * Return the path for the spesific audio directory, for the given ID.
+ * @param {string} idName - The ID of the relevant audio file/directory.
+ */
 function get_specific_dir_path(idName) {
     return path.join(uploadAudioDir, idName);
 }
 
+/**
+ * Return the path for the data json file of the spesific audio directory, for the given ID.
+ * @param {string} id - The ID of the relevant audio file/directory.
+ */
 function get_specific_jData_file_path(id) {
-    console.log('id =', id, ', jDataFileName =', jDataFileName);
     return path.join(get_specific_dir_path(id), jDataFileName);
 }
 
+/**
+ * Read the data from a given file path and send it as a json object as a response.
+ * The file is expected to contain a data in a JSON format.
+ * If an error occure, render a response with a proper error code.
+ * @param {string} dataPath - The path to the json data file.
+ * @param {any} res - A web response object.
+ */
 function send_data_response(dataPath, res) {
-    // Read the file and send it:
     fs.readFile(dataPath, 'utf8', (err, data) => {
         if (err) {
-            console.log('\tFile not read!');
+            myLoggers.errorLog(ENVS.ALL, `Couldn't read file ${dataPath}.`);
             return res.status(500).render('error', {
                 title: 'Internal Server Error',
                 message: "Could not read the requested data.",
@@ -174,154 +254,166 @@ function send_data_response(dataPath, res) {
     });
 }
 
-/*async function spawnPythonProcess(pythonProgPath, args=[], stdoutResolveCallback=undefined, stderrRejectCallback=undefined, closeCallback=undefined) {
+/**
+ * Spawn a python process with the given path and arguments. If given "isAlive" object, 
+ * use it to notify the caller if the process is alive or dead.
+ * Return a Promise that resolves when the spawned process is ready (stdout starts 
+ * with: consts["server_is_ready_msg"]), and rejects on an error or if the process 
+ * finishes unsuccessfuly (success code: consts["convertion_success"])
+ * @param {string} pythonProgPath The path to the python program.
+ * @param {Array} args (Default: []) Array of strings which is the arguments for the python program.
+ * @param {json} isAlive (Default: undefined) A json object with the boolean field "isAlive", to keek track of the process status.
+ */
+async function spawnPythonProcess(pythonProgPath, args = [], isAlive = undefined) {
     return new Promise((resolve, reject) => {
         // Launch the Python program
         let pythonNotesConverter = spawn('python', [pythonProgPath, ...args]);
-        var stdoutData = '';
-        var stderrData = '';
+        if (isAlive !== undefined)
+            isAlive.isAlive = true;  // Mark that the process is running.
+        
+        pythonNotesConverter.on('error', (err) => {
+            // The process failed to launch.
+            myLoggers.errorLog(ENVS.ALL, `The python process got an error: ${err}`);
+            if (isAlive !== undefined)
+                isAlive.isAlive = false;  // Mark that the process is dead.
+            reject();
+        });
 
         pythonNotesConverter.stdout.on('data', (data) => {
-            data = data.toString();
-            stdoutData += data;
-            //console.log(`stdout: ${data}`);
-            if (stdoutResolveCallback) {
-                if (stdoutResolveCallback(data) == true)
-                    // The pythons process is ready -> resolve:
-                    resolve(pythonNotesConverter);
-            }
-        });
-
-        pythonNotesConverter.stderr.on('data', (data) => {
-            data = data.toString();
-            stderrData += data;
-            //console.error(`stderr: ${data}`);
-            // An error message doesn't necessarily means a the task failed. If it does, the python process will close itself.
-
-            if (stderrRejectCallback) {
-                if (stderrRejectCallback(data) == true)
-                    // The pythons process's message means a critical error -> reject:
-                    reject(pythonNotesConverter);
-            }
-        });
-
-        pythonNotesConverter.on('close', (code) => {
-            console.log(`Python process exited with code ${code}`);
-            console.log('Stdout:', stdoutData);
-            console.log('Stderr:', stderrData);
-            pythonNotesConverter = null;
-
-            if (closeCallback) {
-                if (closeCallback(code) == true) resolve(stdoutData);
-                else reject(stderrData);
-            }
-        });
-
-        //return pythonNotesConverter;
-    });
-}
-
-// stdoutResolveCallback:
-(data) => {
-    if (data.startsWith(consts["server_is_ready_msg"])) return true;
-    else return false;
-}
-
-// closeCallback:
-(code) => {
-    if (code == consts['convertion_success']) return true;
-    return false;
-}*/
-
-async function spawnPythonProcess(pythonProgPath, args = []) {
-    return new Promise((resolve, reject) => {
-        // Launch the Python program
-        let pythonNotesConverter = spawn('python', [pythonProgPath, ...args]);
-
-        pythonNotesConverter.stdout.on('data', (data) => {
-            console.log(`stdout: ${data}`);
+            myLoggers.log(ENVS.DEVELOPMENT, `Python process stdout: ${data}`);
             // The pythons process is ready:
             if (data.toString().startsWith(consts["server_is_ready_msg"])) {
-                //console.log('Resolving!');
                 resolve(pythonNotesConverter);
             }
         });
 
         pythonNotesConverter.stderr.on('data', (data) => {
-            console.error(`stderr: ${data}`);
-            // An error message doesn't necessarily means a the task failed. If it does, the python process will close itself.
+            myLoggers.errorLog(ENVS.ALL, `Python process stderr: ${data}`);
+            // An error message doesn't necessarily means a the task failed. If 
+            // it does, the python process will close itself.
         });
 
         pythonNotesConverter.on('close', (code) => {
-            console.log(`Python process exited with code ${code}`);
-            pythonNotesConverter = null;  // Won't work outside!
-            // Perhaps the python program failed before getting to send "server_is_ready_msg". In which case we reject:
+            myLoggers.log(ENVS.ALL, `Python process exited with code ${code}`);
+            if (isAlive !== undefined)
+                isAlive.isAlive = false;  // Mark that the process is dead.
+            // Perhaps the python program failed before getting to send "server_is_ready_msg". 
+            // In which case we reject:
             if (code !== consts["convertion_success"])
                 reject();
         });
-
-        //return pythonNotesConverter;
     });
 }
 
-function convertAudio(audioFile, audioDirPath, pythonNotesConvertor) {
-    //var audioDirPath = get_specific_dir_path(audioFile.id);
+/**
+ * Convert the given audio file into a notes sheet and save it as a PDF file and 
+ * a preview image in the given directory.
+ * Return a Promise that resolves when the whole process is complete and rejects 
+ * on an error.
+ * @param {File} audioFile An audio file object to convert.
+ * @param {string} audioDirPath The directory in which to save the results.
+ */
+function convertAudio(audioFile, audioDirPath) {
     return new Promise((resolve, reject) => {
-        convertToPdf(audioFile, pythonNotesConvertor)
+        convertToPdf(audioFile)
             .then(pdfData => savePdfToFile(pdfData, audioDirPath))
             .then(() => convertAndSaveImage(audioDirPath))
-            .then(() => resolve(true))
+            .then(() => resolve())
             .catch(err => {
-                console.error(err);
-                reject(false);
+                myLoggers.errorLog(ENVS.ALL, err);
+                reject(err);
             });
     });
 }
 
-function convertToPdf(audioFile, pythonNotesConvertor) {
+/**
+ * Convert an audio file into a PDF and return it. For the convertion, open a connection to a 
+ * python convertor process, with the host and port given in "Consts.json".
+ * Return a Promise with the PDF data or an errorof type "SpawnProcessError" class, if occures.
+ * @param {File} audioFile An audio file object to convert.
+ */
+function convertToPdf(audioFile) {
     return new Promise((resolve, reject) => {
-        // Remove:
-        /*setTimeout(() => {
-            resolve("Hello There!\nGeneral Kenobi!");
-        }, 5000);*/
+        const client = new net.Socket().setTimeout(consts['py_process_connection_timeout_ms']);  // A client connection with a response timeout.
+        let receivedData = '';  // Collect the read data.
 
-        // Uncomment:
-        //spawnPythonProcess(pythonNotesConvertor);
-        //spawnPythonProcess(pythonPDFConverterPath);
-
-        const client = new net.Socket();
-
+        // Establish a connection and send the file:
         client.connect(consts.py_converter_port, consts.py_converter_host, () => {
-            client.write(audioFile.buffer.toString("utf8"));  // ?
+            myLoggers.log(ENVS.DEVELOPMENT, 'Socket connected!');
+            client.write(audioFile.buffer.toString("utf8"));
         });
 
-        let receivedData = '';
+        // An error in the connection (such as 'ECONNREFUSED'):
+        client.on('error', (err) => {
+            reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                `Client socket failed to connect: ${err.code}`));
+            client.destroy();
+        });
+
+        // Read a response data:
         client.on('data', (data) => {
             receivedData += data.toString();
         });
 
+        // The connection has ended:
         client.on('end', () => {
-            //console.log('Processed data:', receivedData);
-            client.destroy();
-            if (receivedData == consts["pdf_generation_failed"])
-                reject('Failed to convert the audio file to notes.');
-            else
-                resolve(receivedData);
+            // Connection ended without sending anything:
+            if (receivedData === '') {
+                reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                    'Connection to python convertor ended suddenly without receiving anything.'));
+            }
+            // We have the data:
+            else {
+                receivedData = JSON.parse(receivedData);
+                if (receivedData.code !== consts["convertion_success"]) {
+                    // Convertion failed!
+                    if (receivedData.code == consts["pdf_generation_failed_bad_input"])
+                        // The input file isn't a valid audio file or some other problem.
+                        reject(new SpawnProcessError(consts["status_codes"]["bad_input"],
+                            'Python convertion to PDF notes failed due to bad input file.'));
+                    else
+                        // Internal error.
+                        reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                            'Python convertion to PDF notes failed due to internal reasons.'));
+                }
+                else  // Convertion succeeded.
+                    resolve(receivedData.data);
+            }
+
+            client.destroy();  // Will trigger 'close' event.
         });
 
+        // A timeout event after not receiving anything for too long:
+        client.on('timeout', () => {
+            reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                'Python convertor does not respond (timeout reached)!'));
+            client.destroy();  // Will trigger 'close' event.
+        });
+
+        // Socket connection closes:
         client.on('close', () => {
-            console.log('Connection closed');
+            myLoggers.log(ENVS.DEVELOPMENT, 'convertToPdf socket connection ended (client side).');
         });
     });
 }
 
+/**
+ * Save a PDF file based on the given data into the given audio directory. The 
+ * exact name is to be determined by the data json file in the specific directory, 
+ * whose name is in "jDataFileName" variable. Update this data file with the PDF 
+ * filename.
+ * Return a promise. Reject with a "SpawnProcessError" object upon an error.
+ * @param {any} pdfData The data to be saved as a PDF.
+ * @param {string} audioDirPath The directory in which to save the results.
+ */
 function savePdfToFile(pdfData, audioDirPath) {
     return new Promise((resolve, reject) => {
         const jDataFile = path.join(audioDirPath, jDataFileName);
+        // Read the data json file:
         fs.readFile(jDataFile, 'utf8', (err, data) => {
             if (err) {
-                console.error('Error reading file:', err);
-                reject(`Failed to open ${jDataFileName} file:\n${err}`);
+                reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                    `Failed to open ${jDataFileName} file:\n${err}`));
             }
 
             let jsonData = JSON.parse(data);
@@ -331,94 +423,77 @@ function savePdfToFile(pdfData, audioDirPath) {
             try {
                 fs.writeFileSync(path.join(audioDirPath, pdfName), pdfData);
             } catch (err) {
-                reject(`Failed to save the PDF file.\n${err}`);
+                reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                    `Failed to save the PDF file.\n${err}`));
             }
 
             // Add the PDF path file name to the json data file:
             jsonData[consts["pdf_key_in_jData"]] = pdfName;
 
+            // Save the changes in the json data file to the disc:
             fs.writeFile(jDataFile, JSON.stringify(jsonData), 'utf8', (err) => {
                 if (err) {
-                    console.error('Error writing file:', err);
-                    reject(`Failed to update ${jDataFileName} file:\n${err}`);
+                    myLoggers.errorLog(ENVS.ALL, 'Error writing file:', err);
+                    reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                        `Failed to update ${jDataFileName} file:\n${err}`));
                 } else {
-                    console.log('jData file updated successfully.');
                     resolve();
-                }
-            });
-        });
-    });
-}
+                }  // else
+            });  // writeFile
+        });  // readFile
+    });  // Promise
+}  // savePdfToFile
 
-/*function savePdfToFile(pdfData, audioDirPath) {
-    return new Promise((resolve, reject) => {
-        const jDataFile = path.join(audioDirPath, jDataFileName);
-        try {
-            let jsonData = JSON.parse(fs.readFileSync(jDataFile, { encoding: 'utf8', flag: 'r' }));
-            const pdfName = path.parse(jsonData['newName']).name + consts['pdf_ext'];
-
-            // Save to disc.
-            // Replace it with code that saves it as a PDF:
-            fs.writeFileSync(path.join(audioDirPath, pdfName), pdfData);
-
-            // Add the PDF path file name to the json data file:
-            jsonData[consts["pdf_key_in_jData"]] = pdfName;
-            fs.writeFileSync(jDataFile, JSON.stringify(jsonData), 'utf8');
-
-            resolve();
-        } catch (err) {
-            console.error('Error in savePdfToFile:', err);
-            reject(err);
-        }
-    });
-}*/
-
+/**
+ * Given a directory with a PDF file and a data json file, generate image files of the PDF 
+ * pages, and save them in the directory. The name is based on data within the json data file, 
+ * which will be updated with the images names. Spawns a python process to do all it.
+ * Return a Promise with the process summary output, or throws a "SpawnProcessError" object.
+ * @param {string} audioDirPath  The directory with the PDF and json data file, and where the image is to be saved.
+ */
 function convertAndSaveImage(audioDirPath) {
-    // Remove:
-    /*return new Promise((resolve, reject) => {
-        const sourcePath = path.join(__dirname, '..', 'public', 'images', 'SnowGirl.jpg');
-        const destinationPath = path.join(audioDirPath, 'SnowGirl.jpg');
-        fs.copyFile(sourcePath, destinationPath, (err) => {
-            if (err) reject('Failed to copy image.', err);
-
-            try {
-                const jDataFile = path.join(audioDirPath, jDataFileName);
-                let jsonData = JSON.parse(fs.readFileSync(jDataFile, { encoding: 'utf8', flag: 'r' }));
-                jsonData[consts["img_key_in_jData"]] = ['SnowGirl.jpg'];
-                fs.writeFileSync(jDataFile, JSON.stringify(jsonData), 'utf8');
-                resolve();
-            } catch (e) { reject('Failed to update j_data.json.', err); }
-        });
-    });*/
-
+    // Spawn a python process that performs the image generation and saving.
     const pythonImgGen = spawn('python', [pythonImageGeneratorPath, audioDirPath]);
     var stdoutData = '';
     var stderrData = '';
 
     return new Promise((resolve, reject) => {
+        pythonImgGen.on('error', (err) => {
+            // The process failed to launch.
+            reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                `The python process \"${path.basename(pythonImageGeneratorPath)}\" got an error: ${err}`));
+        });
+
+        // Collect the process stdout:
         pythonImgGen.stdout.on('data', (data) => {
             stdoutData += data.toString();
-            //console.log(data.toString());
         });
 
+        // Collect the process stderr:
         pythonImgGen.stderr.on('data', (data) => {
             stderrData += data.toString();
-            //console.error(`stderr: ${data}`);
         });
 
+        // Process ended. Resolve or reject according to the status code:
         pythonImgGen.on('close', (code) => {
-            console.log('STDOUT:', stdoutData);
-            console.log('STDERR:', stderrData);
+            myLoggers.log(ENVS.ALL, 'pythonImgGen process STDOUT:', stdoutData);
+            myLoggers.log(ENVS.ALL, 'pythonImgGen process STDERR:', stderrData);
 
             if (code == consts['convertion_success']) {
                 resolve(stdoutData);
             } else {
-                reject('Failed to generate notes!\n' + stderrData);
+                reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                    'Failed to generate notes!\n' + stderrData));
             }
         });
     });
 }
 
+/**
+ * Delete the given directory and all its content after a timeout, given in Consts.json
+ * 'delete_files_timeout_millisec' (If no such time is given, the default is 0 ms).
+ * @param {string} dirPath The directory to delete.
+ */
 function deleteDirectoryWithDelay(dirPath) {
     let timeMs = consts['delete_files_timeout_millisec']; // 10 minutes in milliseconds
     try {
@@ -428,93 +503,26 @@ function deleteDirectoryWithDelay(dirPath) {
 
     setTimeout(() => {
         deleteDirectorySync(dirPath);
+        myLoggers.log(ENVS.DEVELOPMENT, `Audio directory \"${path.basename(dirPath)}\" was deleted` +
+            ` after ${timeMs}ms timeout.`);
     }, timeMs);
 }
 
+/**
+ * Delete the given directory and all its content immediately.
+ * @param {string} dirPath The directory to delete.
+ */
 function deleteDirectorySync(dirPath) {
     try {
         fs.rmSync(dirPath, { recursive: true, force: true });
     } catch (err) {
-        console.error(`Failed to remove ${dirPath}:`, err)
+        myLoggers.errorLog(ENVS.ALL, `Failed to remove ${dirPath}:`, err)
     }
 }
 
-
-
-//// Need to fix the function's asynchronization!!
-//function convertAudio(audioFile, audioDirPath) {
-//    //var audioDirPath = get_specific_dir_path(audioFile.id);
-//    //const pythonPDFConverter = spawn('python', [pythonPDFConverterPath, audioDirPath]);
-
-//    const client = new net.Socket();
-
-//    client.connect(consts.py_converter_port, consts.py_converter_host, () => {
-//        client.write(audioFile.buffer.toString("utf8"));  // ?
-//    });
-
-//    client.on('data', (data) => {
-//        dataStr = data.toString();
-//        console.log('Processed data:', dataStr);
-//        // Here if it's OK save both PDF data and original audio, and call the image-generator.
-//        if (dataStr == consts["pdf_generation_failed"]) {
-//            // Failed to convert.
-
-//        } else {
-//            // Convertion to PDF succeeded!
-
-//        }
-
-//        client.destroy(); // Kill client after server's response
-//    });
-
-//    client.on('close', () => {
-//        console.log('Connection closed');
-//    });
-//}
-
-//function convertAudio(audioFile) {
-//    //return true; // Delete it!
-
-//    var audioDirPath = get_specific_dir_path(audioFile.id)
-//    const pythonConverter = spawn('python', [pythonConverterPath, audioDirPath]);
-//    var pyData = '';
-
-//    pythonConverter.stdout.on('data', (data) => {
-//        pyData += data.toString();
-//        console.log(data.toString());
-//    });
-
-//    pythonConverter.stderr.on('data', (data) => {
-//        console.error(`stderr: ${data}`);
-//    });
-
-//    pythonConverter.on('close', (code) => {
-//        if (code !== consts.convertion_success) {
-//            return false;
-//        }
-//        else {
-//            let [pdfPath, imagePath] = pyData.split(Consts.split_py_stdout_char);
-//            console.log('pdfPath =', pdfPath, ', imagePath =', imagePath);
-//            return true;
-//        }
-
-//    });
-
-//    return false;
-
-//    /*pythonConverter.stdout.on('data', (data) => {
-//        const pdfPath = data.toString().trim();
-//        const pdfFile = fs.readFileSync(pdfPath);
-//        res.contentType('application/pdf');
-//        res.send(pdfFile);
-//    });
-
-//    pythonConverter.stderr.on('data', (data) => {
-//        console.error(`stderr: ${data}`);
-//        res.status(500).send('Error generating PDF');
-//    });*/
-//}
-
+/**
+ * Return a unique ID (string).
+ */
 function generate_new_id() {
     const id = String(fileCounter++) + '-' +
         (+new Date()).toString() + '-' +
@@ -523,35 +531,38 @@ function generate_new_id() {
     return id;
 }
 
-function save_file(file, dirname) {
-    //const dirname = get_specific_dir_path(file.id);
+/**
+ * Given a directory path (dirPath), create it if it doesn't already exist and save into 
+ * it the following files:
+ * 1) The given file, if consts["save_audio_file"] is set to true.
+ * 2) A new data json file with relevant meta data.
+ * Return a Promise that resolves on a sucess with a proper message, or rejects with a 
+ * "SpawnProcessError" object on an error.
+ * @param {File} file The file (audio) that is to be saved only if consts["save_audio_file"] is set to true.
+ * @param {string} dirPath The path of the directory. If it doesn't exist, create it.
+ */
+function save_file(file, dirPath) {
+    // The new name for "file":
     var newName = path.parse(file.originalname).name + '-' + file.id + path.parse(file.originalname).ext;
-    /*var newName = path.parse(file.originalname).name + '-' +
-        (+new Date()).toString() + '-' +
-        crypto.randomBytes(6).toString('hex') + 
-        path.parse(file.originalname).ext;*/
-    const extraInfo = {
+    // The json data for the json data file:
+    const extraInfoStr = JSON.stringify({
         id: file.id,
         originalName: file.originalname,
         newName: newName,
-        downloadName: path.parse(file.originalname).name + consts["pdf_ext"],//'.jpg'  // .pdf  // The name of the file to be download is "originalname.pdf".
-
-        //[consts['img_key_in_jData']]: [path.join('..', '..', '..', 'Music_Transcription_App', 'public', 'images', 'SnowGirl.jpg')],  // Remove!
-        //[consts['pdf_key_in_jData']]: path.join('..', '..', '..', 'Music_Transcription_App', 'public', 'images', 'SnowGirl.jpg')  // Remove!
-    };
-    const extraInfoStr = JSON.stringify(extraInfo);
-
+        downloadName: path.parse(file.originalname).name + consts["pdf_ext"],  // The name of the file to be download is "originalname.pdf".
+    });
 
     return new Promise(async (resolve, reject) => {
         try {
-            if (!fs.existsSync(dirname)) {
-                fs.mkdirSync(dirname);
+            // Create the directory if it doesn't exist:
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath);
             }
 
             let writeFilePromises = [];
             if (consts["save_audio_file"])
                 // Save the audio file to disc:
-                writeFilePromises.push(fs.promises.writeFile(path.join(dirname, newName), file.buffer));
+                writeFilePromises.push(fs.promises.writeFile(path.join(dirPath, newName), file.buffer));
             // Save the JSON data file to disc:
             writeFilePromises.push(fs.promises.writeFile(get_specific_jData_file_path(file.id), extraInfoStr, 'utf8'));
 
@@ -559,47 +570,36 @@ function save_file(file, dirname) {
             const resultsArr = await Promise.all(writeFilePromises);
             // All files were saved successfully.
             resolve('Files saved successfuly!');
-
-            //// How to use Promise.all or something else here?
-            //if (consts["save_audio_file"]) {
-            //    fs.writeFile(path.join(dirname, newName), file.buffer, (err) => {
-            //        if (err) {
-            //            console.error('Failed to save the file:\n' + err);
-            //        } else {
-            //            console.log('File saved successfuly!', file.originalname);
-            //        }
-            //    });
-            //}
-            //fs.writeFile(path.join(dirname, jDataFileName), extraInfoStr, 'utf8', (err) => {
-            //    if (err) {
-            //        console.error('Failed to save the file:\n' + err);
-            //    } else {
-            //        console.log('File saved successfuly!', file.originalname);
-            //    }
-            //});
-
         } catch (error) {
-            reject('Failed to save the files:\n' + error);
-            //console.log('Error in save file:', error);
+            reject(new SpawnProcessError(consts["status_codes"]["internal_server_error_code"],
+                'Failed to save the files:\n' + error));
         }
     });
-
-
-    /*try {
-        //console.log(typeof (uploadAudioDir), typeof (newName));
-        //console.log('Path to save =', path.join(uploadAudioDir, newName));
-        fs.writeFile(path.join(uploadAudioDir, newName), file)  // file.buffer
-            .then(() => { console.log('File saved successfuly!', file.originalname); })
-            .catch(err => { console.error('Faile to save the file:\n' + err); });
-    } catch (e) { console.log('Error in save file:', e); }*/
 }
 
+/**
+ * Given an array of upload errors status codes, return the one most relevant status 
+ * code for the uploading process.
+ * @param {Array} errorsArr Array of status codes (numbers).
+ */
+function getMostRelevantUploadError(errorsArr) {
+    if (errorsArr.includes(consts.status_codes.unsupported_media_type_code))
+        return consts.status_codes.unsupported_media_type_code;
+    if (errorsArr.includes(consts.status_codes.data_removed_code))
+        return consts.status_codes.data_removed_code;
+    if (errorsArr.includes(consts.status_codes.bad_input))
+        return consts.status_codes.bad_input;
+
+    return errorsArr[0];  // It doesn't matter. Most likely it's "internal_server_error_code"
+}
+
+/**
+ * Send an image file as a web response to the user client. The image is of the first 
+ * page of the PDF notes sheet, matching the given id.
+ * @param {string} id The ID of the converted audio file whose image is to be sent.
+ * @param {any} res A web response object.
+ */
 function send_image_response(id, res) {
-    //const imagePath = path.join(__dirname, '..', 'public', 'images', 'SnowGirl.jpg');
-
-    //console.log('In send_image_response: ', imagePath);
-    //console.log('In send_image_response: id =', id);
-
     // Get the image file path:
     const jDataPath = get_specific_jData_file_path(id);
     let jData = JSON.parse(fs.readFileSync(jDataPath, { encoding: 'utf8', flag: 'r' }));
@@ -608,57 +608,40 @@ function send_image_response(id, res) {
 
     // Ensure the image file exists
     if (!fs.existsSync(imagePath)) {
-        console.log('No picture @#$$');
-        return res.status(500).send('Image could not be generated.');
+        return res.status(consts["status_codes"]["data_removed_code"]).send('Image could not be generated.');
     }
 
-    //res.send(imagePath);
     // Send the image file as the response
-    //res.setHeader('Content-Type', 'image/jpg');
     try {
         res.sendFile(imagePath);
     } catch (err) {
-        console.log('An error in res.sendFile: ', err);
-        res.status(500).send('Error in sending the file');
+        myLoggers.errorLog(ENVS.ALL, 'An error in \"send_image_response\": Could not send image to the client.', err);
+        res.status(consts["status_codes"]["internal_server_error_code"]).send(`Error in sending the image file.`);
     }
-    //console.log('res sent!');
 }
 
+/**
+ * Send a PDF file matching the given id, as a web response to the user client.
+ * @param {string} id The ID of the converted audio file whose PDF notes sheet is to be sent.
+ * @param {any} res A web response object.
+ */
 function send_pdf_response(id, res) {
-    //const pdfPath = path.join(__dirname, '..', 'public', 'images', 'SnowGirl.jpg');
-
-    // Get the clean name without the id, but with the file counter:
-    //const fileName = path.parse(pdfPath).name + path.parse(pdfPath).ext;
-    //const fileName = path.parse(pdfPath).name.slice(0, -idPartialStrLength) + path.parse(pdfPath).ext;
-
-    // Get the PDF file path:
+    // Get the pdf file path:
     const jDataPath = get_specific_jData_file_path(id);
     let jData = JSON.parse(fs.readFileSync(jDataPath, { encoding: 'utf8', flag: 'r' }));
     const pdfPath = path.join(get_specific_dir_path(id), jData[consts['pdf_key_in_jData']]);
 
-    // Ensure the image file exists
+    // Ensure the pdf file exists
     if (!fs.existsSync(pdfPath)) {
-        console.log('No picture @#$$');
-        return res.status(500).send('Pdf could not be generated.');
+        return res.status(consts["status_codes"]["data_removed_code"]).send('PDF could not be found.');
     }
 
     // Send the PDF file as the response
     try {
         res.sendFile(pdfPath);
-
-        /*fs.readFile(pdfPath, 'binary', (err, data) => {
-            if (err) {
-                console.error('Error reading file:', err);
-                return res.status(500).send('Error reading file ' + fileName);
-            }
-            res.json({
-                file: data,
-                fileName: fileName
-            });
-        });*/
     } catch (err) {
-        console.log('An error in res.sendFile: ', err);
-        res.status(500).send('Error in sending the file');
+        myLoggers.errorLog(ENVS.ALL, 'An error in \"send_image_response\": Could not send pdf to the client.', err);
+        res.status(consts["status_codes"]["internal_server_error_code"]).send('Error in sending the pdf file');
     }
 }
 

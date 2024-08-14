@@ -34,7 +34,6 @@
     </Interpreter>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="converter.py" />
     <Compile Include="image_notes_generator.py">
       <SubType>Code</SubType>
     </Compile>

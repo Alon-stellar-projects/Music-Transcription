@@ -1,3 +1,6 @@
+//- The home page.
+    Author: Alon Haviv, Stellar Intelligence.
+
 extends layout
 
 block content
@@ -8,16 +11,6 @@ block content
   
   div#converter
     p Convert an audio file into note-sheet:
-    //
-        // Load/drop audio file:
-        div#drop-area
-          div#drop-text Load or drop a file here
-          //label(for="files" class="btn" text="Load or drop a file here")
-          input#file-input(type="file")
-          //button.load-file-btn Load
-
-        // Submit to server:
-        button#upload-button(disabled=true) Submit
 
     // File drop area
     div#drop-area
@@ -25,12 +18,12 @@ block content
         label(for="File") File:
         //input#file-input(type="file" name="audio_input" multiple accept="audio")
         input#file-input(type="file" name="audio_input" multiple accept=".txt")
+        // Button to upload the files to the server:
         button#upload-button(disabled=true type="submit") Convert
-        //button#cancel-button(disabled=true type="button") Cancel
       
       p
         strong= "Uploading Status:"
-        span#status-message= ''
+        span#upload-status-message= ''
 
     // Preview window
     div#preview-image
@@ -39,11 +32,21 @@ block content
     // Clear and Download buttons:
     div#buttons-container
       button#clear-button(disabled=true type="button") Clear
-      button#download-button(disabled=true type="button" data-fileId="" ) Download PDF
+      button#download-button(disabled=true type="button" data-file_id="" ) Download PDF
 
+      p
+        span#download-status-message= ''
+
+    // Setup received parameters:
     script.
-        // How many files can be apploaded at once
+        // How many files can be apploaded at once:
         const uploadLimit = #{uploadLimit};
+        // The allowed file types:
+        const allowedTypes = !{JSON.stringify(allowedTypes)};
+        // The maximum allowed total files' size in KB:
+        const sizeLimitKB = #{sizeLimitKB};
+        // Req/res status codes:
+        const statusCodes = !{JSON.stringify(statusCodes)};
     // The main JS pf the page:
     script(src="javascripts/index.js")
 
