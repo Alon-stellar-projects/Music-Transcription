@@ -1,0 +1,303 @@
+/* 
+    Home (index) page styles.
+    Author: Alon Haviv, Stellar Intelligence.
+*/
+
+/* --- Subtitle: --- */
+
+#subtitle {
+    text-align: center;
+    padding: 1rem;
+    font-size: 1.2rem;
+    background: #e5e7eb;
+    border-bottom: 1px solid #d1d5db;
+}
+
+/* Make "hidden" class elements to disappear (be hidden). */
+.hidden {
+    display: none;
+}
+
+/* --- Gallery samples: --- */
+
+.sample-gallery {
+    padding: 30px 50px;
+    margin: 40px auto;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    max-width: 720px; /* keeps content from stretching too wide */
+}
+
+.gallery-subtitle {
+    font-size: 1.4rem;
+    font-weight: 500;
+    color: #444;
+    text-align: center;
+    margin: 0 0 20px 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.gallery-items-panel {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 30px;
+    justify-content: center;
+}
+
+.gallery-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 210px; /* fixed width */
+    height: 340px; /* image + name area */
+    margin: 0;
+
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    transition: box-shadow 0.2s ease;
+}
+
+    .gallery-item:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+/* Gallery image names: */
+
+.gallery-item-name {
+    font-weight: 500;
+    padding: 5px;
+    font-size: 14px;
+    text-align: center;
+    width: 100%;
+}
+
+/* Gallery images: */
+
+.gallery-item-image {
+    width: 210px; /* gallery-appropriate width */
+    height: auto;
+    max-height: 300px;
+    object-fit: contain; /* keeps aspect ratio, no cropping */
+    background-color: #f9f9f9; /* neutral background in case of transparency */
+    border: 2px solid #ddd; /* light border */
+    transition: transform 0.2s ease;
+}
+
+    .gallery-item-image:hover {
+        transform: scale(1.25); /* subtle zoom on hover */
+    }
+
+/* Gallery buttons: */
+
+.gallery-item-download-buttons {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    justify-content: space-around;
+    background: rgba(50, 50, 80, 1);
+    overflow: hidden;
+    height: 0; /* collapsed by default */
+    transition: height 0.3s ease;
+}
+
+    .gallery-item-download-buttons button {
+        color: white;
+        background: transparent;
+        border: 1px solid white;
+        padding: 5px 10px;
+        font-size: 14px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: background 0.2s ease;
+    }
+
+        .gallery-item-download-buttons button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+    .gallery-item-download-buttons.show {
+        height: 40px; /* visible height */
+    }
+
+
+/* --- Converter Panel: --- */
+
+#converter {
+    max-width: 700px;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    background: none;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+    #converter p:first-child {
+        font-weight: bold;
+        font-size: 1.1rem;
+        margin-bottom: 1rem;
+    }
+
+/* --- File uploading section (drop area and upload form): --- */
+
+#drop-area {
+    border: 2px dashed #9ca3af;
+    border-radius: 10px;
+    padding: 1.5rem;
+    text-align: center;
+    background: #f3f4f6;
+    transition: border-color 0.3s, background 0.3s;
+    margin-bottom: 1rem;
+}
+
+    #drop-area.dragover {
+        border-color: #2563eb;
+        background: #e0f2fe;
+    }
+
+    #drop-area label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        text-align: center;
+    }
+
+#file-input {
+    display: block;
+    margin: 0.5rem auto;
+}
+
+/* Upload Button: */
+
+#upload-button {
+    background: #2563eb;
+    color: white;
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.3s;
+}
+
+    #upload-button:disabled {
+        background: #9ca3af;
+        cursor: not-allowed;
+    }
+
+    #upload-button:not(:disabled):hover {
+        background: #1d4ed8;
+    }
+
+/* Instrument Options: */
+
+#instrument-options {
+    margin-top: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 0.8rem;
+    background: #f9fafb;
+}
+
+    #instrument-options label {
+        margin-right: 1rem;
+        margin-left: 12rem;
+        text-align: left;
+    }
+
+/* --- Upload Status: --- */
+
+#upload-status-message {
+    margin-left: 0.5rem;
+    font-weight: 500;
+    color: #2563eb;
+}
+
+/* Processing Indicator */
+#processing-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 1rem;
+    gap: 0.5rem;
+    font-weight: 500;
+    color: #2563eb;
+}
+
+    /* Spinner circle */
+    #processing-indicator .spinner {
+        width: 20px;
+        height: 20px;
+        border: 3px solid #93c5fd; /* light blue */
+        border-top: 3px solid #2563eb; /* dark blue */
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+/* Spin animation */
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* --- Preview Image: --- */
+
+#preview-image {
+    margin-top: 1.5rem;
+    text-align: center;
+}
+
+    #preview-image img {
+        width: 400px;
+        height: auto;
+        max-height: 600px;
+        border-radius: 10px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+
+/* --- Download Section: --- */
+
+/* Buttons Container: */
+
+#buttons-container {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+
+    #buttons-container button {
+        background: #4b5563;
+        color: white;
+        padding: 0.6rem 1rem;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: background 0.3s;
+    }
+
+        #buttons-container button:hover:not(:disabled) {
+            background: #374151;
+        }
+
+        #buttons-container button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+
+/* Download Status: */
+#download-status-message {
+    margin-left: 0.5rem;
+    font-size: 0.9rem;
+    color: #2563eb;
+}

@@ -1,0 +1,13 @@
+//- Error page (such as 404).
+    Author: Alon Haviv, Stellar Intelligence.
+
+extends layout
+
+block styles
+    link(rel='stylesheet', href='/stylesheets/error.css')
+
+block content
+    div.error-content
+        h1= message
+        h2= error.status
+        pre #{error.stack}

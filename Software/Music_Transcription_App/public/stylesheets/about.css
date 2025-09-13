@@ -1,0 +1,26 @@
+/* 
+    About page styles.
+    Author: Alon Haviv, Stellar Intelligence.
+*/
+
+.about-content {
+    max-width: 800px;
+    margin: 2rem auto;
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    line-height: 1.6;
+}
+
+    .about-content h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: #728dc4;
+    }
+
+    .about-content p {
+        font-size: 1.05rem;
+        color: #374151;
+        white-space: pre-line; /* Keeps spacing */
+    }

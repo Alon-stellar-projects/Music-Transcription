@@ -1,0 +1,91 @@
+//- The home page.
+    Author: Alon Haviv, Stellar Intelligence.
+
+extends layout
+
+block styles
+    link(rel='stylesheet', href='/stylesheets/index.css')
+
+block content
+    div#subtitle
+        h3 Play any song or music with your instruments thanks to Beethoven
+  
+    // Only show the sample-gallery if samples array is non-empty
+    if samples.length
+        // The gallery of sampled transcribed music pieces:
+        div.sample-gallery
+            p.gallery-subtitle Take a look at our Gallery
+        
+            .gallery-items-panel
+                each sample in samples
+                    .gallery-item(data-id=sample.id)
+                        .gallery-item-name #{sample.name}
+                        img.gallery-item-image(src=`/images/gallery/${sample.imageName}`, alt=sample.name)
+
+                        // Download buttons container
+                        .gallery-item-download-buttons
+                            button.gallery-download-btn.download-pdf Download PDF
+                            button.gallery-download-btn.download-midi Download MIDI
+ 
+    div#converter
+        p Convert an audio file into note-sheet:
+
+        // File drop area
+        div#drop-area
+            form#upload-form(method="POST" enctype="multipart/form-data")
+                label(for="File") Load or D&D an audio:
+                input#file-input(type="file" name="audio_input" multiple accept="audio")
+
+                //input#file-input(type="file" name="audio_input" multiple accept=".txt")
+                // Button to upload the files to the server:
+                button#upload-button(disabled=true type="submit") Convert
+      
+            // Select single/multiple instruments mode:
+            // To disable it: (style="display:none")
+            fieldset#instrument-options(style="display:none")
+                each item, i in instrumentsOptions
+                    label
+                        input(type="radio" name="instruments_op" value=item['value'] checked=(i === 'one'))
+                        | #{item['label']}
+
+            p
+                strong= "Uploading Status:"
+                span#upload-status-message= ''
+            // Processing indicator (hidden by default)
+            div#processing-indicator(style="display:none")
+                div.spinner
+                span Converting...
+
+        // Preview window
+        div#preview-image
+            img#notes-img.hidden(src="#" alt="Preview Notes")
+            //img#notes-img(src="/images/SnowGirl.jpg" alt="Preview Notes")
+
+        // Clear and Download buttons:
+        div#buttons-container
+            button#download-pdf-button(disabled=true type="button" data-file_id="" data-file_name="" ) Download PDF
+            button#download-midi-button(disabled=true type="button" data-file_id="" data-file_name="" ) Download MIDI
+            button#clear-button(disabled=true type="button") Clear
+
+        p
+            span#download-status-message= ''
+    
+    // Setup received parameters:
+    script.
+        // How many files can be apploaded at once:
+        const uploadLimit = #{uploadLimit};
+        // The allowed file types:
+        const allowedTypes = !{JSON.stringify(allowedTypes)};
+        // The maximum allowed total files' size in Bytes:
+        const sizeLimitBytes = #{sizeLimitBytes};
+        // The time in minutes the converted files will be available for downloading:
+        const downloadTimeLimit_min = #{downloadTimeLimit_min};
+        // The field's key in j_data.json for the final name of a downloaded file:
+        const downloadKeyInJData = !{JSON.stringify(downloadKeyInJData)};
+        // Req/res status codes:
+        const statusCodes = !{JSON.stringify(statusCodes)};
+        // Available options for instruments:
+        const instrumentsOptions = !{JSON.stringify(instrumentsOptions)};
+
+    // The main JS pf the page:
+    script(src="javascripts/index.js")

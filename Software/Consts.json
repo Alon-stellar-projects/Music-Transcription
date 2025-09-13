@@ -1,0 +1,107 @@
+{
+  "app_host": "localhost",
+  "app_port": 3000,
+  "supported_processes": [ "python" ],
+  "nodeJsApp": "./Music_Transcription_App/app.js",
+  "pythonNoteConverterPath": "./Machine_Learning_Python/transcribe_stdio.py",
+  "pythonPDFGeneratorPath": "./Machine_Learning_Python/convert_to_pdf.py",
+  "pythonImageGeneratorPath": "./Machine_Learning_Python/image_notes_generator.py",
+  "dllDirPat": "./Machine_Learning_Python/Models/dll/",
+  "mrmt3DirPath": "./Machine_Learning_Python/Models/MR-MT3/",
+  "models_modules": {
+    "MT3Net": "Mrmt3_wrapper",
+    "basic-pitch": "BasicPitch"
+  },
+  "models_arguments": {
+    "MT3Net": {
+      "module": "mrmt3_wrapper",
+      "class": "Mrmt3_wrapper",
+      "args": [ "--config-dir=config", "--config-name=config_slakh_f1_0.65", "model=MT3Net", "path=pretrained/mt3.pth", "eval.exp_tag_name=MT3Net", "eval.contiguous_inference=False", "hydra/job_logging=disabled" ]
+    },
+    "MT3NetSegMemV2WithPrev_context64_f3_ep100_norandom": {
+      "module": "mrmt3_wrapper",
+      "class": "Mrmt3_wrapper",
+      "args": [ "--config-dir=config", "--config-name=config_slakh_segmem", "model=MT3NetSegMemV2WithPrev", "path=pretrained/exp_segmemV2_prev_context\\=64_prevaug_frame\\=3_MT3_1e-5_ep100_norandom.ckpt", "eval.exp_tag_name=MT3NetSegMemV2WithPrev_context64_f3_ep100_norandom", "eval.contiguous_inference=True", "hydra/job_logging=disabled" ]
+    },
+    "MT3NetSegMemV2WithPrev_context64_f3_ep100_random": {
+      "module": "mrmt3_wrapper",
+      "class": "Mrmt3_wrapper",
+      "args": [ "--config-dir=config", "--config-name=config_slakh_segmem", "model=MT3NetSegMemV2WithPrev", "path=pretrained/exp_segmemV2_prev_context\\=64_prevaug_frame\\=3_MT3_1e-5_ep100_random.ckpt", "eval.exp_tag_name=MT3NetSegMemV2WithPrev_context64_f3_ep100_random", "eval.contiguous_inference=True", "hydra/job_logging=disabled" ]
+    },
+    "MT3NetSegMemV2WithPrev": {
+      "module": "mrmt3_wrapper",
+      "class": "Mrmt3_wrapper",
+      "args": [ "--config-dir=config", "--config-name=config_slakh_segmem", "model=MT3NetSegMemV2WithPrev", "path=pretrained/exp_segmemV2_prev_context\\=64_prevaug_frame\\=3.ckpt", "eval.exp_tag_name=MT3NetSegMemV2WithPrev", "eval.contiguous_inference=True", "hydra/job_logging=disabled" ]
+    },
+    "basic-pitch": {
+      "module": "basic_pitch_model",
+      "class": "BasicPitch",
+      "args": []
+    }
+  },
+  "ai_model": "basic-pitch",
+  "ai_model_prev": "MT3NetSegMemV2WithPrev_context64_f3_ep100_random",
+  "instruments_options": {
+    "one": {
+      "value": 1,
+      "label": "Single Instrument (Recommended)"
+    },
+    "two": {
+      "value": 2,
+      "label": "Two Instruments"
+    },
+    "many": {
+      "value": 3,
+      "label": "Entire Orchestra"
+    }
+  },
+  "samplesAudioDir": "audio/samples",
+  "samplesAudioSubDirsLst": [ "Game of Thrones - The Rains of Castamere Piano", "He's a Pirate (Pirates of the Caribbean Theme) - Viola Cover", "Pirates of the Caribbean - He's a Pirate - Piano", "My Heart Will Go On - Titanic - Piano", "Yerushalayim Shel Zahav - Piano", "Zoltraak - Frieren Beyond Journeys End - Violin" ],
+  "uploadAudioDir": "audio/uploads",
+  "json_data_file_name": "j_data.json",
+  "py_converter_host": "localhost",
+  "py_converter_port": 3001,
+  "server_is_ready_msg": "Listening",
+  "transcription_timeout_ms": 500000,
+  "KEEP_ALIVE_INTERVAL_SEC": 10,
+  "KEEP_ALIVE_MSG": "\n<KEEP-ALIVE>\n",
+  "STDIO_DATA_MSG_PREFIX": "<DATA-MSG>",
+  "STDIO_MSG_POSTFIX": "<MSG-END>",
+  "convertion_success": 200,
+  "convertion_partial_success": 201,
+  "midi_generation_failed": 300,
+  "invalid_audio_dir": 301,
+  "pdf_generation_failed_bad_input": 302,
+  "pdf_generation_failed": 303,
+  "image_generation_failed_bad_input": 304,
+  "image_generation_failed": 305,
+  "status_codes": {
+    "upload_request_success": 201,
+    "bad_input": 400,
+    "data_removed_code": 410,
+    "files_too_large_code": 413,
+    "unsupported_media_type_code": 415,
+    "internal_server_error_code": 500
+  },
+  "split_py_stdout_char": ",",
+  "id_key_in_jData": "id",
+  "media_key_in_jData": "mediaName",
+  "download_key_in_jData": "downloadName",
+  "midi_key_in_jData": "midiName",
+  "pdf_key_in_jData": "pdfName",
+  "img_key_in_jData": "imageNames",
+  "pdf_ext": ".pdf",
+  "img_ext": ".jpeg",
+  "midi_ext": ".mid",
+  "valid_audio_extensions": [ ".mp3", ".ogg", ".wav", ".flac", ".m4a", ".mpeg", ".aac" ],
+  "max_files_transfer": 1,
+  "max_size_Bytes": 60000000,
+  "files_size_ratio": 0.75,
+  "save_audio_file": true,
+  "save_every_file": false,
+  "delete_files_timeout_millisec": " 2 * 60 * 1000",
+  "log_file": "./lib/app.log",
+  "errors_log_file": "./lib/errors.log",
+  "applications": "./Applications",
+  "musescore_path": "./Applications/MuseScore 4/bin/MuseScore4.exe"
+}

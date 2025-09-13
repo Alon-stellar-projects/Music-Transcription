@@ -1,0 +1,15 @@
+//- A navigation ruler for pages in the website.
+    Author: Alon Haviv, Stellar Intelligence.
+
+nav
+  // The header:
+  div.site-title
+    a(href="/")
+      h1 Beethoven
+
+  // Navigation bar to different pages:
+  ul
+    - const links = [{ref: '/', text: 'Home'}, {ref: '/about', text: 'About'}]
+    each link in links
+      li(class=(link.text.toLowerCase() === title.toLowerCase() ? 'active' : ''))
+        a(href=link.ref) #{link.text}

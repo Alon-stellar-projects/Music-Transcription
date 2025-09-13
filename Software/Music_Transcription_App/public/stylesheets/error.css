@@ -1,0 +1,36 @@
+/* 
+    Error page styles.
+    Author: Alon Haviv, Stellar Intelligence.
+*/
+
+.error-content {
+    max-width: 800px;
+    margin: 3rem auto;
+    text-align: center;
+    padding: 2rem;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+}
+
+    .error-content h1 {
+        font-size: 2rem;
+        color: #b91c1c;
+        margin-bottom: 0.5rem;
+    }
+
+    .error-content h2 {
+        font-size: 1.3rem;
+        color: #7f1d1d;
+        margin-bottom: 1rem;
+    }
+
+    .error-content pre {
+        text-align: left;
+        background: #fee2e2;
+        padding: 1rem;
+        border-radius: 6px;
+        overflow-x: auto;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
